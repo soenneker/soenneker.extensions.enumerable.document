@@ -1,6 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using Soenneker.Documents.Document.Abstract;
+using System.Collections.Generic;
 using System.Diagnostics.Contracts;
-using Soenneker.Documents.Document.Abstract;
 
 namespace Soenneker.Extensions.Enumerable.Document;
 
@@ -10,8 +10,19 @@ namespace Soenneker.Extensions.Enumerable.Document;
 public static class EnumerableDocumentsExtension
 {
     /// <summary>
-    /// Returns a list of ids from an enumerable of documents.
+    /// Projects a sequence of <typeparamref name="T"/> documents into a list of their IDs.
     /// </summary>
+    /// <typeparam name="T">The type of document, implementing <see cref="IDocument"/>.</typeparam>
+    /// <param name="value">The enumerable collection of documents.</param>
+    /// <returns>A list of document IDs. Returns an empty list if <paramref name="value"/> is <c>null</c>.</returns>
+    /// <remarks>
+    /// This method is optimized for performance by:
+    /// <list type="bullet">
+    ///   <item><description>Preallocating list capacity when the collection size is known via <see cref="ICollection{T}"/>.</description></item>
+    ///   <item><description>Using index-based iteration for <see cref="IList{T}"/> to minimize iterator overhead.</description></item>
+    ///   <item><description>Avoiding LINQ and deferred execution, returning a fully materialized list of strings.</description></item>
+    /// </list>
+    /// </remarks>
     [Pure]
     public static List<string> ToIds<T>(this IEnumerable<T> value) where T : IDocument
     {
@@ -56,5 +67,59 @@ public static class EnumerableDocumentsExtension
                 return result;
             }
         }
+    }
+
+    /// <summary>
+    /// Determines whether the specified <paramref name="entityEnumerable"/> contains a document with the given <paramref name="id"/>.
+    /// </summary>
+    /// <typeparam name="T">The type of document in the collection, implementing <see cref="IDocument"/>.</typeparam>
+    /// <param name="entityEnumerable">The enumerable collection of documents to search.</param>
+    /// <param name="id">The document ID to search for.</param>
+    /// <returns><c>true</c> if a document with the specified ID is found; otherwise, <c>false</c>.</returns>
+    /// <remarks>
+    /// This method is optimized for performance by avoiding LINQ and minimizing allocations. It handles common collection types
+    /// such as <see cref="IList{T}"/> and <see cref="ICollection{T}"/> efficiently, and uses manual enumeration when necessary.
+    /// </remarks>
+    [Pure]
+    public static bool ContainsId<T>(this IEnumerable<T> entityEnumerable, string id) where T : IDocument
+    {
+        if (entityEnumerable.IsNullOrEmpty())
+            return false;
+
+        switch (entityEnumerable)
+        {
+            case IList<T> list:
+                for (var i = 0; i < list.Count; i++)
+                {
+                    if (list[i].Id == id)
+                        return true;
+                }
+
+                break;
+
+            case ICollection<T> collection:
+                foreach (T item in collection)
+                {
+                    if (item.Id == id)
+                        return true;
+                }
+
+                break;
+
+            default:
+            {
+                using IEnumerator<T> enumerator = entityEnumerable.GetEnumerator();
+
+                while (enumerator.MoveNext())
+                {
+                    if (enumerator.Current.Id == id)
+                        return true;
+                }
+
+                break;
+            }
+        }
+
+        return false;
     }
 }
