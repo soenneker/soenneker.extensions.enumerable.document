@@ -1,6 +1,8 @@
 ﻿using Soenneker.Documents.Document.Abstract;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
+using System.Linq;
+using System.Runtime.CompilerServices;
 
 namespace Soenneker.Extensions.Enumerable.Document;
 
@@ -10,114 +12,116 @@ namespace Soenneker.Extensions.Enumerable.Document;
 public static class EnumerableDocumentsExtension
 {
     /// <summary>
-    /// Projects a sequence of <typeparamref name="T"/> documents into a list of their IDs.
+    /// Materializes a sequence of documents into a <see cref="List{T}"/> containing their <see cref="IDocument.Id"/> values.
     /// </summary>
-    /// <typeparam name="T">The type of document, implementing <see cref="IDocument"/>.</typeparam>
-    /// <param name="value">The enumerable collection of documents.</param>
-    /// <returns>A list of document IDs. Returns an empty list if <paramref name="value"/> is <c>null</c>.</returns>
+    /// <typeparam name="T">The document type.</typeparam>
+    /// <param name="value">The document sequence. If <c>null</c>, returns an empty list.</param>
+    /// <returns>A list of document IDs.</returns>
     /// <remarks>
-    /// This method is optimized for performance by:
-    /// <list type="bullet">
-    ///   <item><description>Preallocating list capacity when the collection size is known via <see cref="ICollection{T}"/>.</description></item>
-    ///   <item><description>Using index-based iteration for <see cref="IList{T}"/> to minimize iterator overhead.</description></item>
-    ///   <item><description>Avoiding LINQ and deferred execution, returning a fully materialized list of strings.</description></item>
-    /// </list>
+    /// This method avoids LINQ and attempts to preallocate capacity when the count can be determined cheaply
+    /// (via <see cref="ICollection{T}"/>, <see cref="IReadOnlyCollection{T}"/>, or <see cref="System.Linq.Enumerable.TryGetNonEnumeratedCount{TSource}"/>).
+    /// When an indexable list is available (<see cref="IList{T}"/> / <see cref="IReadOnlyList{T}"/>), it uses a for-loop to reduce enumerator overhead.
     /// </remarks>
     [Pure]
-    public static List<string> ToIds<T>(this IEnumerable<T> value) where T : IDocument
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static List<string> ToIds<T>(this IEnumerable<T>? value) where T : IDocument
     {
-        switch (value)
+        if (value is null)
+            return [];
+
+        // Fast path: indexable lists
+        if (value is IList<T> list)
         {
-            case null:
-                return [];
+            var result = new List<string>(list.Count);
+            for (var i = 0; i < list.Count; i++)
+                result.Add(list[i].Id);
 
-            case ICollection<T> collection:
-            {
-                var result = new List<string>(collection.Count);
-                // Use indexer if available to avoid iterator allocation
-                if (collection is IList<T> list)
-                {
-                    for (var i = 0; i < list.Count; i++)
-                    {
-                        result.Add(list[i].Id);
-                    }
-                }
-                else
-                {
-                    foreach (T doc in collection)
-                    {
-                        result.Add(doc.Id);
-                    }
-                }
-
-                return result;
-            }
-
-            default:
-            {
-                // Avoid multiple enumerator allocations if possible
-                var result = new List<string>();
-                using IEnumerator<T> enumerator = value.GetEnumerator();
-
-                while (enumerator.MoveNext())
-                {
-                    result.Add(enumerator.Current.Id);
-                }
-
-                return result;
-            }
+            return result;
         }
+
+        if (value is IReadOnlyList<T> roList)
+        {
+            var result = new List<string>(roList.Count);
+            for (var i = 0; i < roList.Count; i++)
+                result.Add(roList[i].Id);
+
+            return result;
+        }
+
+        // Preallocate if we can get a count cheaply
+        int capacity = 0;
+
+        if (value is ICollection<T> collection)
+        {
+            capacity = collection.Count;
+        }
+        else if (value is IReadOnlyCollection<T> roCollection)
+        {
+            capacity = roCollection.Count;
+        }
+        else if (value.TryGetNonEnumeratedCount(out int count))
+        {
+            capacity = count;
+        }
+
+        var result2 = capacity > 0 ? new List<string>(capacity) : new List<string>();
+
+        foreach (T doc in value)
+            result2.Add(doc.Id);
+
+        return result2;
     }
 
     /// <summary>
-    /// Determines whether the specified <paramref name="entityEnumerable"/> contains a document with the given <paramref name="id"/>.
+    /// Determines whether a sequence contains a document whose <see cref="IDocument.Id"/> equals <paramref name="id"/>.
     /// </summary>
-    /// <typeparam name="T">The type of document in the collection, implementing <see cref="IDocument"/>.</typeparam>
-    /// <param name="entityEnumerable">The enumerable collection of documents to search.</param>
+    /// <typeparam name="T">The document type.</typeparam>
+    /// <param name="entityEnumerable">The document sequence. If <c>null</c>, returns <c>false</c>.</param>
     /// <param name="id">The document ID to search for.</param>
-    /// <returns><c>true</c> if a document with the specified ID is found; otherwise, <c>false</c>.</returns>
+    /// <returns><c>true</c> if a matching document is found; otherwise <c>false</c>.</returns>
     /// <remarks>
-    /// This method is optimized for performance by avoiding LINQ and minimizing allocations. It handles common collection types
-    /// such as <see cref="IList{T}"/> and <see cref="ICollection{T}"/> efficiently, and uses manual enumeration when necessary.
+    /// Avoids LINQ and avoids double-enumeration. For indexable lists it uses a for-loop; for counted collections
+    /// it short-circuits when the count is zero; otherwise it performs a single pass enumeration.
     /// </remarks>
     [Pure]
-    public static bool ContainsId<T>(this IEnumerable<T> entityEnumerable, string id) where T : IDocument
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool ContainsId<T>(this IEnumerable<T>? entityEnumerable, string id) where T : IDocument
     {
-        if (entityEnumerable.IsNullOrEmpty())
+        if (entityEnumerable is null)
             return false;
 
-        switch (entityEnumerable)
+        if (entityEnumerable is IList<T> list)
         {
-            case IList<T> list:
-                for (var i = 0; i < list.Count; i++)
-                {
-                    if (list[i].Id == id)
-                        return true;
-                }
-
-                break;
-
-            case ICollection<T> collection:
-                foreach (T item in collection)
-                {
-                    if (item.Id == id)
-                        return true;
-                }
-
-                break;
-
-            default:
+            for (var i = 0; i < list.Count; i++)
             {
-                using IEnumerator<T> enumerator = entityEnumerable.GetEnumerator();
-
-                while (enumerator.MoveNext())
-                {
-                    if (enumerator.Current.Id == id)
-                        return true;
-                }
-
-                break;
+                if (list[i].Id == id)
+                    return true;
             }
+
+            return false;
+        }
+
+        if (entityEnumerable is IReadOnlyList<T> roList)
+        {
+            for (var i = 0; i < roList.Count; i++)
+            {
+                if (roList[i].Id == id)
+                    return true;
+            }
+
+            return false;
+        }
+
+        if (entityEnumerable is ICollection<T> collection && collection.Count == 0)
+            return false;
+
+        if (entityEnumerable is IReadOnlyCollection<T> roCollection && roCollection.Count == 0)
+            return false;
+
+        foreach (T item in entityEnumerable)
+        {
+            if (item.Id == id)
+                return true;
         }
 
         return false;
