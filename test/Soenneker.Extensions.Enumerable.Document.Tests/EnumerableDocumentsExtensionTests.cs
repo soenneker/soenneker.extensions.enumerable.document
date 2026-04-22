@@ -1,11 +1,10 @@
-﻿using Soenneker.Tests.Unit;
-using Xunit;
+using Soenneker.Tests.Unit;
 
 namespace Soenneker.Extensions.Enumerable.Document.Tests;
 
 public sealed class EnumerableDocumentsExtensionTests : UnitTest
 {
-    [Fact]
+    [Test]
     public void Default()
     {
 
