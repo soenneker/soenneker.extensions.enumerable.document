@@ -4,10 +4,24 @@
 [![](https://img.shields.io/github/actions/workflow/status/soenneker/soenneker.extensions.enumerable.document/codeql.yml?label=CodeQL&style=for-the-badge)](https://github.com/soenneker/soenneker.extensions.enumerable.document/actions/workflows/codeql.yml)
 
 # ![](https://user-images.githubusercontent.com/4441470/224455560-91ed3ee7-f510-4041-a8d2-3fc093025112.png) Soenneker.Extensions.Enumerable.Document
-### A collection of helpful IEnumerable Document extension methods
+A collection of helpful IEnumerable Document extension methods.
 
 ## Installation
 
-```
+```bash
 dotnet add package Soenneker.Extensions.Enumerable.Document
 ```
+
+## Quick start
+
+```csharp
+using Soenneker.Extensions.Enumerable.Document;
+
+// Given an existing IEnumerable<T>? named value:
+var result = value.ToIds();
+```
+
+## Common operations
+
+- `ToIds()` - Materializes document IDs into a `List<string>`, preallocating capacity when the source count is cheaply available.
+- `ContainsId()` - Determines whether a sequence contains a document whose `IDocument.Id` equals `id`.
