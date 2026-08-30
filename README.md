@@ -4,7 +4,8 @@
 [![](https://img.shields.io/github/actions/workflow/status/soenneker/soenneker.extensions.enumerable.document/codeql.yml?label=CodeQL&style=for-the-badge)](https://github.com/soenneker/soenneker.extensions.enumerable.document/actions/workflows/codeql.yml)
 
 # ![](https://user-images.githubusercontent.com/4441470/224455560-91ed3ee7-f510-4041-a8d2-3fc093025112.png) Soenneker.Extensions.Enumerable.Document
-A collection of helpful IEnumerable Document extension methods.
+
+ID projection and lookup extensions for sequences of `IDocument` values.
 
 ## Installation
 
@@ -12,16 +13,22 @@ A collection of helpful IEnumerable Document extension methods.
 dotnet add package Soenneker.Extensions.Enumerable.Document
 ```
 
-## Quick start
+## Project IDs
 
 ```csharp
+using Soenneker.Documents.Document.Abstract;
 using Soenneker.Extensions.Enumerable.Document;
 
-// Given an existing IEnumerable<T>? named value:
-var result = value.ToIds();
+IEnumerable<IDocument> documents = GetDocuments();
+List<string> ids = documents.ToIds();
 ```
 
-## Common operations
+`ToIds()` creates a new list in source order. Duplicate IDs are preserved, documents are not cloned or modified, and a null source returns an empty list. The source is enumerated once; known counts are used only to pre-size the result.
 
-- `ToIds()` - Materializes document IDs into a `List<string>`, preallocating capacity when the source count is cheaply available.
-- `ContainsId()` - Determines whether a sequence contains a document whose `IDocument.Id` equals `id`.
+## Find an ID
+
+```csharp
+bool contains = documents.ContainsId("document-42");
+```
+
+`ContainsId()` stops at the first match and returns `false` for a null source. Comparison uses the string `==` operator, which is ordinal and case-sensitive for non-null strings. The sequence must not contain null document entries; accessing a null element fails.
